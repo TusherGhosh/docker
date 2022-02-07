@@ -1,0 +1,101 @@
+docker-compose.yml
+
+version: '3'
+
+services:
+  web:
+    container_name: mikrof_web
+    build:
+      context: ./docker/web
+    ports:
+      - 8080:80
+    volumes:
+      - ./:/var/www/app
+
+  mysql:
+    image: mysql:5.7.22
+    container_name: mikrof_mysql
+    restart: unless-stopped
+    tty: true
+    ports:
+      - "3308:3306"
+    volumes:
+      - /my/own/datadir:/var/lib/mysql
+    environment:
+      MYSQL_USERNAME: "root"
+      MYSQL_PASSWORD: "root"
+      MYSQL_ROOT_PASSWORD: "root"
+      MYSQL_DATABASE: test
+
+  redis :
+    image: redis:4.0.5-alpine
+    container_name: mikrof_redis
+    ports:
+      - "6378:6379"
+    volumes:
+      - $PWD/redis-data:/var/lib/redis
+      - $PWD/redis.conf:/usr/local/etc/redis/redis.conf
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+    restart: always
+  
+   
+
+docker/web/default.conf
+
+<VirtualHost *:80>
+    ServerName localhost
+
+    ServerAdmin webmaster@localhost
+    DocumentRoot /var/www/app/public
+
+    ErrorLog ${APACHE_LOG_DIR}/error.log
+    CustomLog ${APACHE_LOG_DIR}/access.log combined
+
+    <Directory /var/www/app/public>
+	    DirectoryIndex index.php
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+	 </Directory>
+</VirtualHost>
+
+docker/web/Dockerfile
+
+FROM php:7.2.10-apache-stretch
+
+RUN apt-get update -yqq && \
+    apt-get install -y apt-utils zip unzip && \
+    apt-get install -y nano && \
+    apt-get install -y libzip-dev libpq-dev && \
+    docker-php-ext-install pdo_pgsql && \
+    docker-php-ext-install pgsql && \
+    docker-php-ext-configure zip --with-libzip && \
+    docker-php-ext-install zip && \
+    docker-php-ext-install mysqli && \
+    docker-php-ext-install mysqli pdo pdo_mysql && \
+    docker-php-ext-install calendar && \
+    docker-php-ext-install mbstring && \
+    a2enmod rewrite && \
+    rm -rf /var/lib/apt/lists/* && \
+    chown -R www-data:www-data /var/www && \
+    chmod -R 777 /var/www/ 
+   
+
+RUN php -r "readfile('http://getcomposer.org/installer');" | php -- --install-dir=/usr/bin/ --filename=composer
+
+
+RUN touch /usr/local/etc/php/conf.d/php.ini && \
+     echo "max_execution_time = 30000000000;" >> /usr/local/etc/php/conf.d/php.ini && \
+     echo "memory_limit = -1;" >> /usr/local/etc/php/conf.d/php.ini && \
+     echo "max_input_vars = 1000000000;" >> /usr/local/etc/php/conf.d/php.ini
+
+COPY default.conf /etc/apache2/sites-enabled/000-default.conf
+
+WORKDIR /var/www/app
+
+
+
+CMD ["/usr/sbin/apache2ctl", "-D", "FOREGROUND"]
+
+EXPOSE 80
